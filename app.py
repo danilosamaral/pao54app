@@ -33,6 +33,7 @@ def close_db(_: Any) -> None:
 
 def init_db() -> None:
     db = sqlite3.connect(DB_PATH)
+    db.row_factory = sqlite3.Row
     db.executescript(
         """
         CREATE TABLE IF NOT EXISTS users (
@@ -42,23 +43,53 @@ def init_db() -> None:
             password_hash TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS inventory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_name TEXT UNIQUE NOT NULL,
+            unit TEXT NOT NULL,
+            quantity REAL NOT NULL,
+            min_level REAL NOT NULL DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS recipes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
+            name TEXT UNIQUE NOT NULL,
             category TEXT NOT NULL,
             base_yield REAL NOT NULL,
-            instructions TEXT,
-            ingredients TEXT NOT NULL
+            total_cost REAL NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS recipe_ingredients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recipe_id INTEGER NOT NULL,
+            inventory_item_id INTEGER NOT NULL,
+            quantity REAL NOT NULL,
+            unit TEXT NOT NULL,
+            unit_cost_snapshot REAL NOT NULL DEFAULT 0,
+            total_cost_snapshot REAL NOT NULL DEFAULT 0,
+            FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE,
+            FOREIGN KEY (inventory_item_id) REFERENCES inventory(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS customers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            phone TEXT,
+            email TEXT,
+            notes TEXT
         );
 
         CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            customer_name TEXT NOT NULL,
+            customer_id INTEGER NOT NULL,
             product_name TEXT NOT NULL,
             quantity REAL NOT NULL,
+            unit_price REAL NOT NULL DEFAULT 0,
+            total_price REAL NOT NULL DEFAULT 0,
             due_date TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'Pendente',
-            notes TEXT
+            notes TEXT,
+            FOREIGN KEY (customer_id) REFERENCES customers(id)
         );
 
         CREATE TABLE IF NOT EXISTS finances (
@@ -70,20 +101,15 @@ def init_db() -> None:
             date TEXT NOT NULL
         );
 
-        CREATE TABLE IF NOT EXISTS inventory (
+        CREATE TABLE IF NOT EXISTS product_price_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            item_name TEXT NOT NULL,
-            unit TEXT NOT NULL,
-            quantity REAL NOT NULL,
-            min_level REAL NOT NULL DEFAULT 0
-        );
-
-        CREATE TABLE IF NOT EXISTS products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE NOT NULL,
-            unit_price REAL NOT NULL,
-            unit_cost REAL NOT NULL DEFAULT 0,
-            active INTEGER NOT NULL DEFAULT 1
+            product_name TEXT NOT NULL,
+            brand TEXT NOT NULL,
+            package_amount REAL NOT NULL,
+            package_unit TEXT NOT NULL,
+            price REAL NOT NULL,
+            price_date TEXT NOT NULL,
+            location TEXT NOT NULL
         );
         """
     )
@@ -96,6 +122,46 @@ def init_db() -> None:
         )
     db.commit()
     db.close()
+
+
+def latest_unit_cost(db: sqlite3.Connection, ingredient_name: str) -> float:
+    row = db.execute(
+        """
+        SELECT price, package_amount
+        FROM product_price_history
+        WHERE product_name = ?
+        ORDER BY price_date DESC, id DESC
+        LIMIT 1
+        """,
+        (ingredient_name,),
+    ).fetchone()
+    if not row or row["package_amount"] <= 0:
+        return 0.0
+    return float(row["price"]) / float(row["package_amount"])
+
+
+def refresh_recipe_cost(db: sqlite3.Connection, recipe_id: int) -> None:
+    rows = db.execute(
+        """
+        SELECT ri.id, ri.quantity, inv.item_name
+        FROM recipe_ingredients ri
+        JOIN inventory inv ON inv.id = ri.inventory_item_id
+        WHERE ri.recipe_id = ?
+        """,
+        (recipe_id,),
+    ).fetchall()
+
+    total = 0.0
+    for row in rows:
+        unit_cost = latest_unit_cost(db, row["item_name"])
+        line_cost = float(row["quantity"]) * unit_cost
+        total += line_cost
+        db.execute(
+            "UPDATE recipe_ingredients SET unit_cost_snapshot=?, total_cost_snapshot=? WHERE id=?",
+            (unit_cost, line_cost, row["id"]),
+        )
+
+    db.execute("UPDATE recipes SET total_cost=? WHERE id=?", (total, recipe_id))
 
 
 def login_required(view):
@@ -145,7 +211,8 @@ def dashboard():
         "recipes": db.execute("SELECT COUNT(*) FROM recipes").fetchone()[0],
         "orders": db.execute("SELECT COUNT(*) FROM orders WHERE status != 'Entregue'").fetchone()[0],
         "stock_alerts": db.execute("SELECT COUNT(*) FROM inventory WHERE quantity <= min_level").fetchone()[0],
-        "products": db.execute("SELECT COUNT(*) FROM products WHERE active = 1").fetchone()[0],
+        "products": db.execute("SELECT COUNT(*) FROM product_price_history").fetchone()[0],
+        "customers": db.execute("SELECT COUNT(*) FROM customers").fetchone()[0],
     }
 
     finance = db.execute(
@@ -157,58 +224,77 @@ def dashboard():
         """
     ).fetchone()
 
-    recent_orders = db.execute(
-        "SELECT * FROM orders ORDER BY due_date ASC LIMIT 5"
-    ).fetchall()
-
-    return render_template(
-        "dashboard.html",
-        totals=totals,
-        entradas=finance["entradas"] or 0,
-        saidas=finance["saidas"] or 0,
-        recent_orders=recent_orders,
-    )
+    return render_template("dashboard.html", totals=totals, entradas=finance["entradas"] or 0, saidas=finance["saidas"] or 0)
 
 
 @app.route("/recipes", methods=["GET", "POST"])
 @login_required
 def recipes():
     db = get_db()
+
     if request.method == "POST":
-        db.execute(
-            "INSERT INTO recipes (name, category, base_yield, instructions, ingredients) VALUES (?, ?, ?, ?, ?)",
-            (
-                request.form["name"],
-                request.form["category"],
-                float(request.form["base_yield"]),
-                request.form.get("instructions", ""),
-                request.form["ingredients"],
-            ),
-        )
+        action = request.form.get("action")
+        if action == "create_recipe":
+            db.execute(
+                "INSERT OR IGNORE INTO recipes (name, category, base_yield) VALUES (?, ?, ?)",
+                (request.form["name"], request.form["category"], float(request.form["base_yield"])),
+            )
+            flash("Receita criada.", "success")
+
+        if action == "add_ingredient":
+            recipe_id = int(request.form["recipe_id"])
+            db.execute(
+                "INSERT INTO recipe_ingredients (recipe_id, inventory_item_id, quantity, unit) VALUES (?, ?, ?, ?)",
+                (recipe_id, int(request.form["inventory_item_id"]), float(request.form["quantity"]), request.form["unit"]),
+            )
+            refresh_recipe_cost(db, recipe_id)
+            flash("Ingrediente adicionado e custo atualizado.", "success")
+
+        if action == "delete_ingredient":
+            ingredient_id = int(request.form["ingredient_id"])
+            recipe_id = int(request.form["recipe_id"])
+            db.execute("DELETE FROM recipe_ingredients WHERE id = ?", (ingredient_id,))
+            refresh_recipe_cost(db, recipe_id)
+            flash("Ingrediente removido.", "success")
+
         db.commit()
-        flash("Receita cadastrada com sucesso.", "success")
-        return redirect(url_for("recipes"))
+        return redirect(url_for("recipes", recipe_id=request.form.get("recipe_id")))
 
     all_recipes = db.execute("SELECT * FROM recipes ORDER BY name").fetchall()
-    selected = None
-    scaled_ingredients = []
-    production_qty = None
+    inventory_rows = db.execute("SELECT * FROM inventory ORDER BY item_name").fetchall()
 
-    recipe_id = request.args.get("recipe_id")
+    selected = None
+    ingredients = []
+    production_qty = None
+    factor = 1.0
+
+    recipe_id = request.args.get("recipe_id", type=int)
     if recipe_id:
         selected = db.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
         if selected:
+            refresh_recipe_cost(db, selected["id"])
+            db.commit()
+            ingredients = db.execute(
+                """
+                SELECT ri.*, inv.item_name
+                FROM recipe_ingredients ri
+                JOIN inventory inv ON inv.id = ri.inventory_item_id
+                WHERE ri.recipe_id = ?
+                ORDER BY ri.id DESC
+                """,
+                (selected["id"],),
+            ).fetchall()
             production_qty = float(request.args.get("production_qty", selected["base_yield"]))
             factor = production_qty / selected["base_yield"] if selected["base_yield"] else 1
-            for line in selected["ingredients"].splitlines():
-                scaled_ingredients.append({"line": line, "factor": round(factor, 2)})
 
     return render_template(
         "recipes.html",
         recipes=all_recipes,
+        inventory_items=inventory_rows,
         selected=selected,
-        scaled_ingredients=scaled_ingredients,
+        ingredients=ingredients,
         production_qty=production_qty,
+        factor=factor,
     )
 
 
@@ -217,23 +303,99 @@ def recipes():
 def orders():
     db = get_db()
     if request.method == "POST":
-        db.execute(
-            "INSERT INTO orders (customer_name, product_name, quantity, due_date, status, notes) VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                request.form["customer_name"],
-                request.form["product_name"],
-                float(request.form["quantity"]),
-                request.form["due_date"],
-                request.form["status"],
-                request.form.get("notes", ""),
-            ),
-        )
+        action = request.form.get("action")
+
+        if action == "create_customer":
+            db.execute(
+                "INSERT INTO customers (name, phone, email, notes) VALUES (?, ?, ?, ?)",
+                (
+                    request.form["name"],
+                    request.form.get("phone", ""),
+                    request.form.get("email", ""),
+                    request.form.get("notes", ""),
+                ),
+            )
+            flash("Cliente cadastrado.", "success")
+
+        if action == "update_customer":
+            db.execute(
+                "UPDATE customers SET name=?, phone=?, email=?, notes=? WHERE id=?",
+                (
+                    request.form["name"],
+                    request.form.get("phone", ""),
+                    request.form.get("email", ""),
+                    request.form.get("notes", ""),
+                    int(request.form["customer_id"]),
+                ),
+            )
+            flash("Cliente atualizado.", "success")
+
+        if action == "delete_customer":
+            db.execute("DELETE FROM customers WHERE id=?", (int(request.form["customer_id"]),))
+            flash("Cliente removido.", "success")
+
+        if action == "create_order":
+            qty = float(request.form["quantity"])
+            unit_price = float(request.form["unit_price"])
+            db.execute(
+                """
+                INSERT INTO orders (customer_id, product_name, quantity, unit_price, total_price, due_date, status, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(request.form["customer_id"]),
+                    request.form["product_name"],
+                    qty,
+                    unit_price,
+                    qty * unit_price,
+                    request.form["due_date"],
+                    request.form["status"],
+                    request.form.get("notes", ""),
+                ),
+            )
+            flash("Encomenda cadastrada.", "success")
+
+        if action == "update_order":
+            qty = float(request.form["quantity"])
+            unit_price = float(request.form["unit_price"])
+            db.execute(
+                """
+                UPDATE orders
+                SET customer_id=?, product_name=?, quantity=?, unit_price=?, total_price=?, due_date=?, status=?, notes=?
+                WHERE id=?
+                """,
+                (
+                    int(request.form["customer_id"]),
+                    request.form["product_name"],
+                    qty,
+                    unit_price,
+                    qty * unit_price,
+                    request.form["due_date"],
+                    request.form["status"],
+                    request.form.get("notes", ""),
+                    int(request.form["order_id"]),
+                ),
+            )
+            flash("Encomenda atualizada.", "success")
+
+        if action == "delete_order":
+            db.execute("DELETE FROM orders WHERE id=?", (int(request.form["order_id"]),))
+            flash("Encomenda removida.", "success")
+
         db.commit()
-        flash("Encomenda salva.", "success")
         return redirect(url_for("orders"))
 
-    all_orders = db.execute("SELECT * FROM orders ORDER BY due_date").fetchall()
-    return render_template("orders.html", orders=all_orders)
+    customer_rows = db.execute("SELECT * FROM customers ORDER BY name").fetchall()
+    order_rows = db.execute(
+        """
+        SELECT o.*, c.name AS customer_name
+        FROM orders o
+        JOIN customers c ON c.id = o.customer_id
+        ORDER BY o.due_date DESC
+        """
+    ).fetchall()
+
+    return render_template("orders.html", customers=customer_rows, orders=order_rows)
 
 
 @app.route("/finance", methods=["GET", "POST"])
@@ -265,7 +427,7 @@ def inventory():
     db = get_db()
     if request.method == "POST":
         db.execute(
-            "INSERT INTO inventory (item_name, unit, quantity, min_level) VALUES (?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO inventory (item_name, unit, quantity, min_level) VALUES (?, ?, ?, ?)",
             (
                 request.form["item_name"],
                 request.form["unit"],
@@ -286,20 +448,36 @@ def inventory():
 def products():
     db = get_db()
     if request.method == "POST":
-        db.execute(
-            "INSERT OR REPLACE INTO products (name, unit_price, unit_cost, active) VALUES (?, ?, ?, 1)",
-            (
-                request.form["name"],
-                float(request.form["unit_price"]),
-                float(request.form.get("unit_cost", 0) or 0),
-            ),
-        )
+        action = request.form.get("action")
+        if action == "create_price":
+            db.execute(
+                """
+                INSERT INTO product_price_history (product_name, brand, package_amount, package_unit, price, price_date, location)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    request.form["product_name"],
+                    request.form["brand"],
+                    float(request.form["package_amount"]),
+                    request.form["package_unit"],
+                    float(request.form["price"]),
+                    request.form["price_date"],
+                    request.form["location"],
+                ),
+            )
+            flash("Preço registrado.", "success")
+
+        if action == "delete_price":
+            db.execute("DELETE FROM product_price_history WHERE id=?", (int(request.form["price_id"]),))
+            flash("Registro removido.", "success")
+
         db.commit()
-        flash("Produto cadastrado/atualizado.", "success")
         return redirect(url_for("products"))
 
-    product_rows = db.execute("SELECT * FROM products ORDER BY name").fetchall()
-    return render_template("products.html", products=product_rows)
+    prices = db.execute(
+        "SELECT * FROM product_price_history ORDER BY product_name, price_date DESC, id DESC"
+    ).fetchall()
+    return render_template("products.html", prices=prices)
 
 
 if __name__ == "__main__":

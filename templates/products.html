@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Produtos e custos</h2>
+<div class="grid two">
+  <section class="card">
+    <form method="post" class="form-grid">
+      <input name="name" placeholder="Produto" required>
+      <input name="unit_price" type="number" step="0.01" placeholder="Preço unitário" required>
+      <input name="unit_cost" type="number" step="0.01" placeholder="Custo unitário" required>
+      <button type="submit">Salvar</button>
+    </form>
+  </section>
+  <section class="card">
+    <table>
+      <tr><th>Produto</th><th>Custo</th><th>Preço</th><th>Margem</th></tr>
+      {% for p in products %}
+      <tr><td>{{ p.name }}</td><td>R$ {{ '%.2f'|format(p.unit_cost) }}</td><td>R$ {{ '%.2f'|format(p.unit_price) }}</td><td>R$ {{ '%.2f'|format(p.unit_price - p.unit_cost) }}</td></tr>
+      {% else %}
+      <tr><td colspan="4">Sem produtos.</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+</div>
+{% endblock %}

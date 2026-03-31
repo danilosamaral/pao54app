@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Dashboard</h2>
+<div class="grid four">
+  <section class="card"><h3>Receitas</h3><p>{{ totals.recipes }}</p></section>
+  <section class="card"><h3>Encomendas em aberto</h3><p>{{ totals.orders }}</p></section>
+  <section class="card"><h3>Alertas de estoque</h3><p>{{ totals.stock_alerts }}</p></section>
+  <section class="card"><h3>Produtos ativos</h3><p>{{ totals.products }}</p></section>
+</div>
+<div class="grid two">
+  <section class="card"><h3>Financeiro</h3><p>Entradas: R$ {{ '%.2f'|format(entradas) }}</p><p>Saídas: R$ {{ '%.2f'|format(saidas) }}</p></section>
+  <section class="card"><h3>Próximas entregas</h3>
+    <ul>
+      {% for order in recent_orders %}
+        <li>{{ order.due_date }} - {{ order.customer_name }} ({{ order.product_name }})</li>
+      {% else %}
+        <li>Nenhuma encomenda cadastrada.</li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+{% endblock %}

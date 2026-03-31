@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Receitas</h2>
+<div class="grid two">
+  <section class="card">
+    <h3>Nova receita</h3>
+    <form method="post" class="form-grid">
+      <input name="name" placeholder="Nome" required>
+      <input name="category" placeholder="Categoria" required>
+      <input name="base_yield" type="number" step="0.01" placeholder="Rendimento base" required>
+      <textarea name="ingredients" placeholder="Ingredientes (uma linha por item)" required></textarea>
+      <textarea name="instructions" placeholder="Modo de preparo"></textarea>
+      <button type="submit">Salvar</button>
+    </form>
+  </section>
+  <section class="card">
+    <h3>Impressão para produção</h3>
+    <form method="get" class="form-grid">
+      <select name="recipe_id" required>
+        <option value="">Escolha a receita</option>
+        {% for r in recipes %}
+          <option value="{{ r.id }}" {% if selected and selected.id == r.id %}selected{% endif %}>{{ r.name }}</option>
+        {% endfor %}
+      </select>
+      <input name="production_qty" type="number" step="0.01" placeholder="Quantidade da produção" value="{{ production_qty or '' }}" required>
+      <button type="submit">Gerar</button>
+      <button type="button" onclick="window.print()">Imprimir</button>
+    </form>
+    {% if selected %}
+      <h4>{{ selected.name }} (fator x{{ scaled_ingredients[0].factor if scaled_ingredients else 1 }})</h4>
+      <ul>
+      {% for item in scaled_ingredients %}<li>{{ item.line }}</li>{% endfor %}
+      </ul>
+      <p>{{ selected.instructions }}</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

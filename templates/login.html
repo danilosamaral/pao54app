@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login | Pão 54</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body class="login-page">
+  <form class="card" method="post">
+    <h1>Pão 54</h1>
+    <p>Acesso da micropadaria</p>
+    <label>E-mail</label>
+    <input name="email" type="email" required>
+    <label>Senha</label>
+    <input name="password" type="password" required>
+    <button type="submit">Entrar</button>
+    <small>Usuário inicial: admin@pao54.local / pao54admin</small>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+  </form>
+</body>
+</html>

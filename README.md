@@ -1,37 +1,51 @@
 # Pão 54 - Plataforma de Gestão para Micropadaria
 
-Aplicação web para gestão diária da micropadaria **Pão 54**, com foco em produção, encomendas, financeiro, estoque e cadastro de produtos/custos.
+Agora o projeto possui uma versão pronta para rodar **online no Streamlit Cloud**, sem necessidade de instalar programas localmente.
 
-## Funcionalidades implementadas
+## Opção recomendada: rodar online no Streamlit Community Cloud
 
-- Login e senha para acesso de usuários cadastrados.
-- Dashboard com visão consolidada (receitas, encomendas, alertas de estoque e resumo financeiro).
-- Cadastro de receitas com cálculo de escala para produção e impressão.
-- Agenda de encomendas.
-- Controle financeiro (entradas e saídas).
-- Registro de estoque com alerta de reposição.
-- Cadastro de produtos com preço e custo unitário para apoiar cálculo de margem.
+### 1) Suba este projeto para um repositório no GitHub
+- Crie um repositório no GitHub (público ou privado).
+- Envie os arquivos desta pasta para lá.
 
-## Stack
+### 2) Publique no Streamlit Cloud
+1. Acesse: https://share.streamlit.io/
+2. Clique em **New app**.
+3. Selecione seu repositório.
+4. Em **Main file path**, informe: `streamlit_app.py`.
+5. Clique em **Deploy**.
 
-- **Backend:** Python + Flask
-- **Banco de dados:** SQLite
-- **Frontend:** HTML + CSS (paleta preta, dourada, branca e vermelha)
+Pronto: sua plataforma ficará acessível via link web.
 
-## Como executar
+---
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python app.py
-```
-
-Acesse: `http://127.0.0.1:5000`
-
-## Usuário inicial
+## Credenciais iniciais
 
 - Email: `admin@pao54.local`
 - Senha: `pao54admin`
 
-> Recomendação: altere as credenciais em ambiente de produção.
+> Troque a senha em produção.
+
+---
+
+## Funcionalidades entregues (na versão Streamlit)
+
+- Login e senha para usuários cadastrados.
+- Dashboard com indicadores principais.
+- Cadastro de receitas com escala de produção e impressão (via navegador).
+- Agenda de encomendas.
+- Controle financeiro (entradas/saídas).
+- Registro de estoque com alerta de reposição.
+- Cadastro de produtos com preço, custo e margem.
+
+---
+
+## Arquivo principal para deploy online
+
+- `streamlit_app.py`
+
+---
+
+## Se quiser manter também a versão Flask
+
+A versão em Flask permanece no arquivo `app.py`, mas para o seu cenário (sem instalação local), use o Streamlit Cloud com `streamlit_app.py`.

@@ -44,6 +44,7 @@ Se aparecer esta mensagem, quase sempre é configuração de acesso no Streamlit
 ## Credenciais iniciais da aplicação Pão 54
 
 Estas credenciais são da **tela de login interna do sistema**, e só funcionam depois que o acesso ao app no Streamlit Cloud já estiver liberado.
+## Credenciais iniciais
 
 - Email: `admin@pao54.local`
 - Senha: `pao54admin`

@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Dashboard</h2>
+<div class="grid four">
+  <section class="card"><h3>Receitas</h3><p>{{ totals.recipes }}</p></section>
+  <section class="card"><h3>Encomendas em aberto</h3><p>{{ totals.orders }}</p></section>
+  <section class="card"><h3>Alertas de estoque</h3><p>{{ totals.stock_alerts }}</p></section>
+  <section class="card"><h3>Clientes</h3><p>{{ totals.customers }}</p></section>
+</div>
+<div class="grid two">
+  <section class="card"><h3>Financeiro</h3><p>Entradas: R$ {{ '%.2f'|format(entradas) }}</p><p>Saídas: R$ {{ '%.2f'|format(saidas) }}</p></section>
+  <section class="card"><h3>Histórico de preços</h3><p>{{ totals.products }} registros</p></section>
+</div>
+{% endblock %}

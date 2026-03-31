@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Produtos e histórico de preços</h2>
+<div class="grid two">
+  <section class="card">
+    <h3>Novo registro de preço</h3>
+    <form method="post" class="form-grid">
+      <input type="hidden" name="action" value="create_price">
+      <input name="product_name" placeholder="Produto" required>
+      <input name="brand" placeholder="Marca" required>
+      <input name="package_amount" type="number" step="0.01" placeholder="Peso/volume da embalagem" required>
+      <select name="package_unit"><option>g</option><option>kg</option><option>ml</option><option>L</option><option>un</option></select>
+      <input name="price" type="number" step="0.01" placeholder="Preço" required>
+      <input name="price_date" type="date" required>
+      <input name="location" placeholder="Local" required>
+      <button type="submit">Salvar preço</button>
+    </form>
+  </section>
+  <section class="card">
+    <h3>Evolução de preços</h3>
+    <table>
+      <tr><th>Produto</th><th>Marca</th><th>Embalagem</th><th>Preço</th><th>Data</th><th>Local</th><th>Custo unit.</th><th>Ação</th></tr>
+      {% for p in prices %}
+      <tr>
+        <td>{{ p.product_name }}</td><td>{{ p.brand }}</td><td>{{ p.package_amount }} {{ p.package_unit }}</td><td>R$ {{ '%.2f'|format(p.price) }}</td><td>{{ p.price_date }}</td><td>{{ p.location }}</td><td>R$ {{ '%.4f'|format(p.price / p.package_amount) }}</td>
+        <td>
+          <form method="post">
+            <input type="hidden" name="action" value="delete_price">
+            <input type="hidden" name="price_id" value="{{ p.id }}">
+            <button type="submit">Excluir</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}<tr><td colspan="8">Sem histórico.</td></tr>{% endfor %}
+    </table>
+  </section>
+</div>
+{% endblock %}
